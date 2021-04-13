@@ -1,0 +1,12 @@
+#!/bin/bash
+
+CUV=$1
+N=$2
+shift 2
+for F
+do
+	nr=$( head -n $N $F| grep -Ec "$CUV")
+	echo "FISIER $F ARE CUVANTUL $CUV DE $nr ori"
+done
+
+

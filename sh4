@@ -1,0 +1,16 @@
+#!/bin/bash
+#SA SE SCRIE UN SCRIPT CARE PRIMESTE CA ARGUMENT  UN SINGUR CARACTER C
+# SCRIPTUL VA CITI DE LA TASTATURA CUVINTE PANA SE INTRODUCE CUVANTUL STOP
+#VA AFISA PRIMA POZITIE PE CARE APARE CARACTERUL C IN FICARE CUVANT CITIT
+N=$1
+while true;do
+	read -p "CUVANT: " CUV
+	if [ $CUV = "stop" ]
+	then
+		echo "--------------"
+		exit 1
+	fi
+	NN=$(echo "$CUV" | awk -v C="$N" -v CUVANT="$CUV" 'BEGIN {print index(CUVANT,C) } ')
+	echo "CARACTERUL APARE PE POZITIA $NN"
+
+done

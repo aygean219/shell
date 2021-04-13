@@ -1,0 +1,24 @@
+#!/bin/bash
+# SA SE SCRIE UN SCRIPT CARE PRIMESTE CA SI ARGUMENT UN NUMAR NATURAL N
+#SCRIPTUL VA CITI DE LA TASTATURA CUVINTE PANA SE INTRODUCE CUVANTUL "STOP"
+#SI VA SCRIE IN FISIERUL "CUVINTE.TXT" DOAR ACELE CUVINTE CARE AU UN NR DE CARACTERE MAI MARE DECAT N
+N=$1
+if [ -f cuvinte.txt ]
+then
+	rm cuvinte.txt
+fi
+while true;do
+	read -p "Cuvantul:" CUV
+	if [ $CUV = "stop" ]
+	then
+		echo "-----------------"
+		exit 1
+	fi
+	NRC=$(echo "$CUV" |wc -m)
+	if [ $NRC -gt $N ]
+	then
+		echo "$CUV" >> cuvinte.txt
+	fi
+
+done
+

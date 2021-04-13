@@ -1,0 +1,15 @@
+#!/bin/bash
+CUV=$1
+shift 1
+NR=0
+for f 
+do
+	ok=$( grep -Ec "$CUV"  $f )
+	if [ ! $ok -eq 0 ]
+	then
+		NR=$(( $NR + 1 ))
+
+	fi
+done
+	echo "CUVANTUL $CUV IL CONTIN $NR FISIERE"
+
