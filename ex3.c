@@ -1,117 +1,88 @@
-//Write a C program that creates two child processes A and B
-//The main program will read in a continous loop single characters and after each character read
-//the parent will send it to process A and B as following :
-// -prcess A will receive only vowels,and will return to the parent a reuslt considerint the 
-// following logic a -> @,e ->3 , i-> !,o -> 0,u -> <.The parent will display the received result
-// -process B will receive onluy non-vowels,will send back to the parent character ?.The parent
-// will display the received result on screen
-// Parent will stop reading characters from the keyboard when "x" is typed.
+//
+// barrier_1.c - Using barriers
+//
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <unistd.h>
-#include <sys/wait.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
-int main(int argc,char* argv[])
+#define MAX_THR 10		// number of threads
+#define MAX_NR 100		// numbers of integers in the array
+
+int nr_arr[MAX_NR];
+int max_arr[MAX_THR];
+
+
+pthread_barrier_t barr;
+pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+
+
+//
+// List array
+//
+void* func(void* a)
 {
-
-	int p_to_A[2],A_to_p[2],p_to_B[2],B_to_p[2];
-	int respA=pipe(p_to_A);
-	int resAp=pipe(A_to_p);
-	int respB=pipe(p_to_B);
-	int resBp=pipe(B_to_p);
-		
-	if( respA==-1 || resAp==-1 || respB==-1 || resBp==-1)
+	int k=*(int*)a;
+	int min=k*(MAX_NR/MAX_THR);
+	int max=min+(MAX_NR/MAX_THR);
+	int i;
+	int max_loc=nr_arr[min];
+	for(i=min+1;i<max;i++)
 	{
-		perror("Pipe() error: ");
-		exit(EXIT_FAILURE);
-	}
-
-	//A			     
-	int pidA = fork();
-	if(pidA==0)
-	{
-		close(p_to_A[1]);
-		close(A_to_p[0]);
-		char c;
-		while(c!='x')
-		{	char cn;
-			read(p_to_A[0],&c,sizeof(char));
-			if(c=='a')
-			{
-				cn='@';
-			}
-			if(c=='e')
-			{
-				cn='3';
-			}
-			if(c=='i')
-			{
-				cn='!';
-			}
-			if(c=='o')
-			{
-				cn='0';
-			}
-			if(c=='u')
-			{
-				cn='<';
-			}
-			write(A_to_p[1],&cn,sizeof(char));
-		}
-		exit(EXIT_SUCCESS);
-	}
-
-	//B
-	int pidB=fork();
-	if(pidB==0)
-	{
-		close(p_to_B[1]);
-		close(B_to_p[0]);
-		char c;
-		while(c!='x')
-	       	{       char cn;
-			read(p_to_B[0],&c,sizeof(char));
-			cn='?';
-			write(B_to_p[1],&cn,sizeof(char));
-		}
-		exit(EXIT_SUCCESS);
-	}
-	//parinte
-	char s[5]="\0";
-	char c='\0';
-	while(c!='x')
-	{
-		printf("Dati caracterul:\n");
-		scanf("%s",s);
-		if(c=='x')
-		{	exit(EXIT_SUCCESS);
-			break;
-		}
-		else
+		if(nr_arr[i]>max_loc)
 		{
-		c=s[0];
-		char a;
-		if( c=='a' || c=='e' || c=='i' || c=='o' || c=='u')
-		{	//A
-			write(p_to_A[1],&c,sizeof(char));
-			read(A_to_p[0],&a,sizeof(char));
-			printf("A: %c\n",a);
-		}
-		else
-		{
-			//B
-			write(p_to_B[1],&c,sizeof(char));
-			read(B_to_p[0],&a,sizeof(char));
-			printf("B: %c\n",a);
-			
-		}
+			max_loc=nr_arr[i];
 		}
 	}
-	 close(p_to_A[1]);
-	 close(A_to_p[0]);
-	 close(p_to_B[1]);
-	 close(B_to_p[0]);
-	 wait(0);
-	 wait(0);
-	 return 0;
+	max_arr[k]=max_loc;
+	pthread_barrier_wait(&barr);
+	int dif_max;
+	for(i=0;i<MAX_THR;i++)
+	{
+		int diff=abs(max_arr[i]-max_loc);
+		if(diff>dif_max)
+		{
+			dif_max=diff;
+		}
+	}
+	printf("Thread %d maximul pe thread %d\n",k,max_loc);
+	printf("Thread %d diferenta maxima: %d\n",k,dif_max);
+
+	return NULL;
+}
+//
+// Thread routine
+//
+int main(int argc, char* argv[])
+{
+	pthread_t thr[MAX_THR];
+
+	pthread_barrier_init(&barr, NULL, MAX_THR);// init the barrier
+
+	int i;
+
+	int bnf=open("random-file.bin",O_RDONLY);
+	for(i=0;i<MAX_NR;i++)
+	{
+		read(bnf,&nr_arr[i],1);
+	}
+	for (i = 0; i < MAX_THR; i++)// create the threads
+	{
+		int *tid = (int*)malloc(1 * sizeof(int));
+		*tid = i;
+		pthread_create(&thr[i], NULL, func, tid);
+	}
+
+	for (i = 0; i < MAX_THR; i++)
+	{
+		pthread_join(thr[i], NULL);// wait for each thread to finish
+	}
+
+	pthread_barrier_destroy(&barr);// destroy the barrier
+
+	return 0;
 }

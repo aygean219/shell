@@ -1,105 +1,95 @@
-//Write a C program that creates 2 child processes A and B:
-//The main program will read in continous loop numbers and after each number read,the parent will send it to process
-//A aand B as following:
-//-process A will receive even numbers,will add one to the received numbers and will
-//send them back to the parent that will display the number on the screen
-//-process B will receive odd numbers,will send them back to the parent the last digit of the number
-//that will display this last digit on screen
-// Parent will stop reading numbers from the keyboard when number 0 is typed.
+//
+// lock_2.c - Using a MUTEX (MUTual EXclusion lock)
+//
+// pthread_mutex_lock()   - acquire a lock on the specified mutex variable. If the mutex is already locked by another thread,
+//                          this call will block the calling thread until the mutex is unlocked.
+// pthread_mutex_unlock() - unlock a mutex variable. An error is returned if mutex is already unlocked or owned by another thread.
+//
+
+
 #include <stdio.h>
+#include <pthread.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
+#define MAX_READ  1000   // maximum number of readers
+#define MAX_WRITE 100    // maximum number of writers
 
-int main(int argc,char* argv[])
+int seats = 100;        // initial number of seats
+float price = 75.0f;    // initial price per seat
+
+// declare a mutex object
+pthread_mutex_t mtx;
+
+//
+// Readers start routine
+//
+void* check(void* a)
 {
+	int k =*(int*)a;
 
-	int p_to_A[2],A_to_p[2],p_to_B[2],B_to_p[2];
-	int respA=pipe(p_to_A);
-	int resAp=pipe(A_to_p);
- 	int respB=pipe(p_to_B);
-        int resBp=pipe(B_to_p);
+	pthread_mutex_lock(&mtx);         // lock
 
-	if( respA==-1 || resAp==-1 || respB==-1 || resBp==-1)
+	printf("Reader %2d: Locuri %d, pret %f\n",
+		k, seats, price * (2 - seats/100.0f));
+
+	pthread_mutex_unlock(&mtx);       // unlock
+
+	return NULL;
+}
+
+//
+// Writers start routine
+//
+void* buy(void* a)
+{
+	int k = *(int*)a;
+
+	pthread_mutex_lock(&mtx);         // lock
+
+	printf("Writer %2d: Locul meu este %d, pret %f\n",
+		k, seats, price * (2 - seats/100.0f));
+	seats--;
+
+	pthread_mutex_unlock(&mtx);       // unlock
+
+	return NULL;
+}
+
+
+
+int main(int argc, char* argv[])
+{
+	// create the mutex object
+	pthread_mutex_init(&mtx, NULL);
+
+	int i;
+	pthread_t tr[MAX_READ];
+	for (i = 0; i < MAX_READ; i++)
 	{
-		perror("Pipe() error: ");
-		exit(EXIT_FAILURE);
+		int *tid=(int*)malloc(sizeof(int));
+		*tid=i;
+		pthread_create(&tr[i], NULL, check, tid);	// create readers
 	}
 
-	//A
-	int pidA = fork();
-	if(pidA==0)
+	pthread_t tw[MAX_WRITE];
+	for (i = 0; i < MAX_WRITE; i++)
 	{
-		close(p_to_A[1]);
-		close(A_to_p[0]);
-		int n=1;
-		while(n>0){
-			if(0>read(p_to_A[0],&n,sizeof(int)))
-			{
-				perror("Error: la citirea numarului in procesul A ");
-			}
-			n=n+1;
-			if(0>write(A_to_p[1],&n,sizeof(int)))
-			{
-				perror("Error: la scrierea numarului in A");
-			}
-		}
-		exit(EXIT_SUCCESS);
+		int *tid=(int*)malloc(sizeof(int));
+		*tid=i;
+		pthread_create(&tw[i], NULL, buy, tid);	// create writers
 	}
 
-	//B
-        int pidB = fork();
-        if(pidB==0)
-        {
-                close(p_to_B[1]);
-                close(B_to_p[0]);
-                int n=1;
-                while(n>0){
-                        if(0>read(p_to_B[0],&n,sizeof(int)))
-                        {
-                                perror("Error: la citirea numarului in procesul B ");
-                        }
-                        n=n%10;
-                        if(0>write(B_to_p[1],&n,sizeof(int)))
-                        {
-                                perror("Error: la scrierea numarului in B");
-                        }
-                }
-                exit(EXIT_SUCCESS);
-        }
-	//parinte
-	int n=1;
-	int afisare=0;
-	while(n>0)
+	for (i = 0; i < MAX_READ; i++)
 	{
-		printf("Dati un numar: ");
-		scanf("%d",&n);
-		if(n==0) exit(EXIT_SUCCESS);
-		//verific cui ii trimit
-		if( n % 2 == 0)
-		{
-			//A
-			write(p_to_A[1],&n,sizeof(int));
-			read(A_to_p[0],&afisare,sizeof(int));
-			printf("A: %d\n",afisare);
-
-		}
-		else
-		{
-			 //B
-                        write(p_to_B[1],&n,sizeof(int));
-                        read(B_to_p[0],&afisare,sizeof(int));
-                        printf("B: %d\n",afisare);
-
-		}
-
+		pthread_join(tr[i], NULL);	// wait for readers to finish
 	}
-	close(p_to_A[1]);
-	close(A_to_p[0]);
-	close(p_to_B[1]);
-	close(B_to_p[0]);
-	wait(0);//A
-	wait(0);//B
+
+	for (i = 0; i < MAX_WRITE; i++)
+	{
+		pthread_join(tw[i], NULL);      // wait for writers to finish
+	}
+
+	// destroy the mutex object
+	pthread_mutex_destroy(&mtx);
+
 	return 0;
-
 }
