@@ -1,85 +1,117 @@
-//Write a C program that receives integers as command line argument. 
-//The program will keep a frequency vector for all digits. 
-//The program will create a thread for each argument that counts 
-//the number of occurences of each digit and adds the result 
-//to the frequency vector. Use efficient synchronization.
 #include <pthread.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <time.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-int vect[10];
-pthread_mutex_t mutexes[10];
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
+#define RANGE 200
 
+int N = 0;
+int M = 0;
+int* numbers = NULL;
+int thrNum;
+int flag = 0;
+int maxim = 0;
 
-void *func(void *arg)
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condVar = PTHREAD_COND_INITIALIZER;
+pthread_barrier_t barrier;
+
+void* produce(void* a)
 {
-	int x=*((int*)arg);
-	while(1)
-	{	
-		pthread_mutex_lock(&mutexes[x%10]);
-		int n=x%10;
-		if(x==0) 
-		{	
-			pthread_mutex_unlock(&mutexes[n]);
-			break;
-		}
-		int nn=n;
-		x=x/10;
-		vect[nn]++;
-		pthread_mutex_unlock(&mutexes[nn]);
-	}
-	free(arg);
-	return NULL;
+    pthread_mutex_lock(&mutex);
+    while (flag == 1)
+    {
+	    pthread_cond_wait(&condVar, &mutex);
+    }
+    srand(time(0));
+    int i;
+    for (i = 0; i < N; i++)
+        numbers[i]=rand()%255+1;
+
+    flag = 1;
+    pthread_cond_signal(&condVar);
+    pthread_mutex_unlock(&mutex);
+    return NULL;
 }
 
-int main(int argc,char *argv[])
+void* consume(void* idPtr)
 {
-	if(argc<2)
-	{
-		printf("Please provice at least one argument.\n");
-		exit(1);
-	}
-	pthread_t *thrds=malloc(sizeof(pthread_t)*(argc-1));
-	int i;
-	for(i=0;i<10;i++)
-	{
-		if( 0>pthread_mutex_init(&mutexes[i],NULL))
-		{
-			perror("Error on creating mutexes\n");
-			exit(1);
-		}
-	}
-	for(i=0;i<=9;i++)
-	{
-		vect[i]=0;
-	}
-	for( i=0;i<argc-1;i++)
-	{
-		int *k=(int*)malloc(sizeof(int));
-		*k=atoi(argv[i+1]);
-		if( 0>pthread_create(&thrds[i],NULL,func,k))
-		{
-			perror("Error on create thread");
-		}
-	}
-	for( i=0;i<argc-1;i++)
-	{
-		if(0>pthread_join(thrds[i],NULL))
-		{
-			perror("Error waiting for thread");
-		}
-	}
-	printf("Total digits \n 0: %d\n 1: %d\n 2: %d\n 3: %d\n 4: %d\n 5: %d\n 6: %d\n 7: %d\n 8: %d\n 9: %d\n",vect[0],vect[1],vect[2],vect[3],vect[4],vect[5],vect[6],vect[7],vect[8],vect[9]);
-	for(i=0;i<10;i++)
-	{
-		pthread_mutex_destroy(&mutexes[i]);
-	}
-	free(thrds);
-	return 0;
-}	
+    int id = *(int*)idPtr;
+
+    pthread_mutex_lock(&mutex);
+    while (flag == 0)
+        pthread_cond_wait(&condVar, &mutex);
+    pthread_mutex_unlock(&mutex);
+
+    int localSum = 999;
+    int start = id * RANGE;
+    int end = (id + 1) * RANGE;
+
+    int i;
+    for (i = start; i < end; i++)
+    {
+	    if(numbers[i]%11==0&&numbers[i+1]%11==0)
+	    {
+		    if(localSum>numbers[i]+numbers[i+1])
+		    {
+			    localSum=numbers[i]+numbers[i+1];
+		    }
+	    }
+    }
+    if(localSum!=999)
+    {
+    	printf("Thread %d, range %d->%d, sum=%d:\n", id, start, end, localSum);
+    }
+
+    pthread_barrier_wait(&barrier);
+
+    pthread_mutex_lock(&mutex);
+    if(localSum>maxim && localSum!=999)
+    {
+	    maxim=localSum;
+    }
+    pthread_mutex_unlock(&mutex);
+
+    free(idPtr);
+    return NULL;
+}
+
+int main()
+{
+    printf("Introduceti N:");
+    scanf("%d", &N);
+
+    numbers = malloc(sizeof(int) * N);
+
+    pthread_t producer;
+    pthread_create(&producer, NULL, produce, NULL);
+
+    thrNum = N / RANGE;
+
+    pthread_t* consumers = malloc(sizeof(pthread_t) * thrNum);
+
+    int i;
+
+    pthread_barrier_init(&barrier, NULL, thrNum);
+
+    for (i = 0; i < thrNum; i++)
+    {
+        int* idPtr = malloc(sizeof(int));
+        *idPtr = i;
+        pthread_create(&consumers[i], NULL, consume, idPtr);
+    }
+    pthread_join(producer, NULL);
+
+    for (i = 0; i < thrNum; i++)
+        pthread_join(consumers[i], NULL);
+
+    printf("Maxim sum :%d\n", maxim);
+
+    pthread_barrier_destroy(&barrier);
+    free(consumers);
+    free(numbers);
+
+    return 0;
+}
