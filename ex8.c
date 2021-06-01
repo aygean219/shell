@@ -1,120 +1,99 @@
-//Write a program that receives strings of characters as command line arguments. 
-//For each string the program creates a thread which calculates the number of digits,
-// the number of leters and the number of special characters (anything other than a letter or digit). 
-// The main program waits for the threads to terminate and prints the total results (total number of digits,
-//  letters and special characters across all the received command line arguments) and terminates.
-//   Use efficient synchronization. Do not use global variables
-#include <pthread.h>
-#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
+
+#include <time.h>
+
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
-typedef struct
-{
-	int *letters,*digits,*specials;
-	pthread_mutex_t *mutexes;
-	char *str;
-}data;
+#include <math.h>
+#include <limits.h>
 
-void *func(void *arg)
+#define RANGE 200
+
+int* numbers;
+int N = 0;
+int fileD;
+int globalMin = INT_MAX;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_barrier_t barrier;
+
+void* threadRoutine(void* idPtr)
 {
-	data dt=*((data*) arg);
-	int l=0, d=0, s=0;
-	int i,len=strlen(dt.str);
-	for( i=0;i<len;i++)
-	{
-		if((dt.str[i] >='a' && dt.str[i]<= 'z') || (dt.str[i] >='A' && dt.str[i]<='Z'))
-		{
-			l++;
-		}
-		else
-		{
-			if(dt.str[i] >= '0' && dt.str[i] <='9')
-			{
-				d++;
-			}
-			else
-			{
-				s++;
-			}
-		}
-	}
-	if(l>0)
-	{
-		pthread_mutex_lock(&dt.mutexes[0]);
-		*(dt.letters)+=l;
-		pthread_mutex_unlock(&dt.mutexes[0]);
-	}
-	if(d>0)
-	{
-		pthread_mutex_lock(&dt.mutexes[1]);
-		*(dt.digits)+=d;
-		pthread_mutex_unlock(&dt.mutexes[1]);
-	}
-	if(s>0)
-	{
-		pthread_mutex_lock(&dt.mutexes[2]);
-		*(dt.specials)+=s;
-		pthread_mutex_unlock(&dt.mutexes[2]);
-	}		
-	return NULL;
+    int id = *(int*)idPtr;
+    int start = id * RANGE;
+    int end = (id + 1) * RANGE;
+
+    int i;
+
+    for (i = start; i < end; i++)
+        read(fileD, &numbers[i], 1);
+
+    int M = rand() % 256;
+    int absDiff = INT_MAX;
+    int posClosest = 0;
+
+    for (i = start; i < end; i++)
+        if (numbers[i] % 5 == 0 && abs(numbers[i] - M) < absDiff)
+        {
+            absDiff = abs(numbers[i] - M);
+            posClosest = i;
+        }
+
+    printf("Thread %d, range %d->%d, M = %d, closest number = %d\n", id, start, end, M, numbers[posClosest]);
+
+    pthread_barrier_wait(&barrier);
+
+    pthread_mutex_lock(&mutex);
+
+    if (globalMin > numbers[posClosest])
+        globalMin = numbers[posClosest];
+
+    pthread_mutex_unlock(&mutex);
+
+    free(idPtr);
+    return NULL;
 }
 
-int main(int argc,char *argv[])
+int main()
 {
-	if(argc<2)
-	{
-		printf("Please provice at least one argument.\n");
-		exit(1);
-	}
-	int *letters=malloc(sizeof(int));
-	int *digits=malloc(sizeof(int));
-	int *specials=malloc(sizeof(int));
-	pthread_t *thrds=malloc(sizeof(pthread_t)*(argc-1));
-	data *args=malloc(sizeof(data)*(argc-1));
-	pthread_mutex_t *mutexes=malloc(sizeof(pthread_mutex_t)*3);
-	int i;
-	for(i = 0 ; i < 3 ; i++)
-	{
-		if( 0>pthread_mutex_init(&mutexes[i],NULL))
-		{
-			perror("Error on creating mutexes\n");
-			exit(1);
-		}
-	}
-	*letters=0;
-	*digits=0;
-	*specials=0;
-	for( i=0;i<argc-1;i++)
-	{
-		args[i].letters=letters;
-		args[i].digits=digits;
-		args[i].specials=specials;
-		args[i].mutexes=mutexes;
-		args[i].str=argv[i+1];
-		if( 0>pthread_create(&thrds[i],NULL,func,(void *) &args[i]))
-		{
-			perror("Error on create thread");
-		}
-	}
-	for( i=0;i<argc-1;i++)
-	{
-		if(0>pthread_join(thrds[i],NULL))
-		{
-			perror("Error waiting for thread");
-		}
-	}
-	printf("Total letters: %d\nTotal digits: %d\nTotal special characters: %d\n",*letters,*digits,*specials);
-	for(i=0;i<3;i++)
-	{
-		pthread_mutex_destroy(&mutexes[i]);
-	}
-	free(args);
-	free(thrds);
-	free(mutexes);
-	free(letters);
-	free(digits);
-	free(specials);
-	return 0;
-}	
+    printf("N=");
+    scanf("%d", &N);
+
+    numbers = malloc(sizeof(int) * N);
+
+    int thrNum = N / RANGE;
+    pthread_t* threads = malloc(sizeof(pthread_t) * thrNum);
+
+    pthread_barrier_init(&barrier, NULL, thrNum);
+
+    fileD = open("random-file", O_RDONLY);
+    if (fileD == -1)
+    {
+        perror("error open()\n");
+        exit(1);
+    }
+
+    srand(time(NULL));
+
+    int i;
+    for (i = 0; i < thrNum; i++)
+    {
+        int* idPtr = malloc(sizeof(int));
+        *idPtr = i;
+        pthread_create(&threads[i], NULL, threadRoutine, idPtr);
+    }
+
+    for (i = 0; i < thrNum; i++)
+        pthread_join(threads[i], NULL);
+
+    printf("Global min = %d\n", globalMin);
+    free(numbers);
+    free(threads);
+    pthread_barrier_destroy(&barrier);
+    return 0;
+}

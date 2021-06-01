@@ -1,89 +1,75 @@
-//
-// barrier_1.c - Using barriers
-//
-
 #include <stdio.h>
-#include <stdlib.h>
 #include <pthread.h>
+#include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
+#include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#define MAX_SIZE 10
 
-#define MAX_THR 10		// number of threads
-#define MAX_NR 100		// numbers of integers in the array
-
-int nr_arr[MAX_NR];
-int max_arr[MAX_THR];
-
-
-pthread_barrier_t barr;
-pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+//shared variable
+int counts[MAX_SIZE];
 
 
-//
-// List array
-//
-void* func(void* a)
+//lock obj
+pthread_mutex_t mtx=PTHREAD_MUTEX_INITIALIZER;
+
+struct tdata
 {
-	int k=*(int*)a;
-	int min=k*(MAX_NR/MAX_THR);
-	int max=min+(MAX_NR/MAX_THR);
-	int i;
-	int max_loc=nr_arr[min];
-	for(i=min+1;i<max;i++)
-	{
-		if(nr_arr[i]>max_loc)
-		{
-			max_loc=nr_arr[i];
-		}
-	}
-	max_arr[k]=max_loc;
-	pthread_barrier_wait(&barr);
-	int dif_max=0;
-	for(i=0;i<MAX_THR;i++)
-	{
-		int diff=abs(max_arr[i]-max_loc);
-		if(diff>dif_max)
-		{
-			dif_max=diff;
-		}
-	}
-	printf("Thread %d maximul pe thread %d\n",k,max_loc);
-	printf("Thread %d diferenta maxima: %d\n",k,dif_max);
+	int pos;
+	char file[50];
+};
+
+void* do_count(void* a)
+{
+	struct tdata targs=*(struct tdata*)a;
 	free(a);
+	printf("Pos: %d File :%s\n",targs.pos,targs.file);
+	int fd=open(targs.file,O_RDONLY);
+	char c;
+	int count=0;
+	while(read(fd,&c,1)!=0)
+	{
+		if((c>='A')&&(c<='Z'))
+		{
+			count++;
+		}
+	}
+	close(fd);
+	pthread_mutex_lock(&mtx);
+	counts[targs.pos]+=count;
+	pthread_mutex_unlock(&mtx);
 	return NULL;
 }
-//
-// Thread routine
-//
-int main(int argc, char* argv[])
+
+int main(int argc,char* argv[])
 {
-	pthread_t thr[MAX_THR];
-
-	pthread_barrier_init(&barr, NULL, MAX_THR);// init the barrier
-
-	int i;
-
-	int bnf=open("random-file.bin",O_RDONLY);
-	for(i=0;i<MAX_NR;i++)
+	if(argc==1)
 	{
-		read(bnf,&nr_arr[i],1);
+		printf("Nu este un numar de arg bun\n");
+		printf("Folosire: a.txt 3 ,b.txt 1 ..\n");
+		exit(EXIT_FAILURE);
 	}
-
-	for (i = 0; i < MAX_THR; i++)// create the threads
+	int max_thr=(int)(argc/2);
+	int i=0;
+	pthread_t tid[max_thr];
+	for(i=0;i<max_thr;i++)
 	{
-		int* tid=(int*)malloc(sizeof(int));
-		*tid = i;
-		pthread_create(&thr[i], NULL, func, tid);
+		struct tdata* targ=(struct tdata*)malloc(sizeof(struct tdata));
+		targ->pos=atoi(argv[2*i+2]);
+		strcpy(targ->file,argv[2*i+1]);
+		pthread_create(&tid[i],NULL,do_count,targ);
 	}
-
-	for (i = 0; i < MAX_THR; i++)
+	for(i=0;i<max_thr;i++)
 	{
-		pthread_join(thr[i], NULL);// wait for each thread to finish
+		pthread_join(tid[i],NULL);
 	}
-	
-	pthread_barrier_destroy(&barr);// destroy the barrier
-
+	printf("Counts:\n");
+	for(i=0;i<MAX_SIZE;i++)
+	{
+		printf("counts[%d]: %d\n",i,counts[i]);
+	}
 	return 0;
 }

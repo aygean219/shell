@@ -1,83 +1,72 @@
-//
-// ex_model.c
-//
-//2. Citiți 100.000 de numere dintr-un fișier binar cu numere aleatoare și determinați
-//mai apoi, utilizând 100 thread-uri, câte numere sunt divizibile cu 5.
 #include <stdio.h>
-#include <pthread.h>
 #include <stdlib.h>
-#include <time.h>
-#include <fcntl.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/types.h>
+#include <fcntl.h>
 
-// maximum number of threads
-#define MAX_THR 100
-#define MAX_NR 100000
-#define MAX_LIM 1000
-// shared variable
-int n_div=0;
-int nr[MAX_NR];
+#define MAX_THR 10
+#define MAX_NR 1000
 
-// lock object
-pthread_mutex_t mtx=PTHREAD_MUTEX_INITIALIZER;
+int nr_arr[MAX_NR];
+int max_arr[MAX_THR];
 
-// thread start routine
-void* do_count(void* a)
+pthread_barrier_t barr;
+pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+
+void* funct(void* a)
 {
-	int k = *(int*)a;
-	//printf("Eu sunt thread-ul %d\n", k);
-	int min=k*MAX_LIM;
-	int max=min+MAX_LIM;
-	int i;
+
+	int k=*(int*)a;
+	int min=k*(MAX_NR/MAX_THR);
+	int max=min+(MAX_NR/MAX_THR);
+	int i=0;
+	int max_loc=nr_arr[min];
 	for(i=min;i<max;i++)
 	{
-		pthread_mutex_lock(&mtx);
-		if(nr[i]%5==0)
-		{
-			n_div++;
-		}
-		pthread_mutex_unlock(&mtx);
+		if(nr_arr[i]>max_loc)
+			max_loc=nr_arr[i];
 	}
-	free(a);
+	max_arr[k]=max_loc;
+	pthread_barrier_wait(&barr);
+	int dif_max; 
+	for(i=0;i<MAX_THR;i++)
+	{
+		int diff=abs(max_arr[i]-max_loc);
+		if(diff>dif_max)
+			dif_max=diff;
+	}
+	printf("Thread %d maximul pe thread:%d\n",k,max_loc);
+	printf("Thread %d diferenta maxima: %d\n",k,dif_max);
 	return NULL;
 }
 
-
-
 int main(int argc, char* argv[])
 {
-	pthread_t t[MAX_THR];
-	
+	pthread_t thr[MAX_THR];
+
+	pthread_barrier_init(&barr, NULL, MAX_THR);	// init the barrier
+
 	int i;
-	int fd=open("random-file.bin",O_RDONLY);
+
+	int bnf=open("random-file",O_RDONLY);
 	for(i=0;i<MAX_NR;i++)
 	{
-		read(fd,&nr[i],1);
-		
+		read(bnf,&nr_arr[i],1);
 	}
-	close(fd);
+	close(bnf);
+	for (i = 0; i < MAX_THR; i++)	
+	{
+		int *tid = (int*)malloc(1 * sizeof(int));
+		*tid = i;
+		 pthread_create(&thr[i], NULL, funct, tid);
+	}
 	for (i = 0; i < MAX_THR; i++)
 	{
-		int* k=(int*)malloc(sizeof(int));
-		*k=i;
-		pthread_create(&t[i], NULL, do_count, k);
+		pthread_join(thr[i], NULL);
 	}
 
-	for (i = 0; i < MAX_THR; i++)
-	{
-		pthread_join(t[i], NULL);
-	}
-	printf("Numarul de divizori :%d\n",n_div);
-	int n_div2=0;
-	for(i=0;i<MAX_NR;i++)
-	{
-		if(nr[i]%5==0)
-		{
-			n_div2++;
-		}
-	}
-	printf("Numar divizori 2: %d\n",n_div2);
+	pthread_barrier_destroy(&barr);
+
 	return 0;
 }
